@@ -4,7 +4,13 @@ Version perso de GA (inclus Objectifs + Facebook + divers)
 Configuration des objectifs dans GA :
 -------------------------------------
 
-Destination = /order/step6.html
+Modèle : effectuer un paiement
+
+Type d'objectif : destination
+
+Destination : = /order/step6.html
+
+Etapes de l'entonnoir de conversion :
 
 Page produit : /product.php (obligatoire:non)
 
@@ -24,11 +30,16 @@ Paramètres de commerce électronique dans GA :
 
 Rapports améliorés : activé
 
-Etapes de l'entonnoir de conversion
+Etapes de l'entonnoir de conversion :
 
 1 Panier
+
 2 Authentification
+
 3 Adresses
+
 4 Frais de port
+
 5 Paiement
+
 6 Confirmation
