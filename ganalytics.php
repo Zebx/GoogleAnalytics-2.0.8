@@ -220,14 +220,20 @@ class Ganalytics extends Module
 
 	private function _getGoogleAnalyticsTag($back_office = false)
 	{
+			$ua = Tools::safeOutput(Configuration::get('GA_ACCOUNT_ID'));
+					
 			return '
 			<script type="text/javascript">
 				(window.gaDevIds=window.gaDevIds||[]).push(\'d6YPbH\');
+				// Disable tracking if the opt-out cookie exists.
+				var disableStr = \'ga-disable-'.$ua.'\';
+				if (document.cookie.indexOf(disableStr + \'=true\') > -1) {window[disableStr] = true;}
 				(function(i,s,o,g,r,a,m){i[\'GoogleAnalyticsObject\']=r;i[r]=i[r]||function(){
 				(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
 				m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
 				})(window,document,\'script\',\'//www.google-analytics.com/analytics.js\',\'ga\');
-				ga(\'create\', \''.Tools::safeOutput(Configuration::get('GA_ACCOUNT_ID')).'\', \'auto\');
+				ga(\'create\', \''.$ua.'\', \'auto\', {\'siteSpeedSampleRate\': 50});
+				ga(\'require\', \'displayfeatures\');
 				ga(\'require\', \'ec\');
 				'.($back_office ? 'ga(\'set\', \'nonInteraction\', true);' : '').'
 			</script>';
@@ -288,8 +294,28 @@ class Ganalytics extends Module
 					'url' => $this->context->link->getModuleLink('ganalytics', 'ajax', array(), true));
 				$ga_scripts = $this->addTransaction($order_products, $transaction);
 
+				//zebx facebook conversion
+				$fb_script = '<script>
+								(function() {
+									var _fbq = window._fbq || (window._fbq = []);
+									if (!_fbq.loaded) {
+										var fbds = document.createElement(\'script\');
+										fbds.async = true;
+										fbds.src = \'//connect.facebook.net/en_US/fbds.js\';
+										var s = document.getElementsByTagName(\'script\')[0];
+										s.parentNode.insertBefore(fbds, s);
+										_fbq.loaded = true;
+									}
+								})();
+								window._fbq = window._fbq || [];
+								window._fbq.push([\'track\', \'0000000000\', {\'value\':\''.$order->total_products.'\',\'currency\':\''.Tools::safeOutput($this->context->currency->iso_code).'\'}]);
+								</script>
+								<noscript>
+								<img height="1" width="1" alt="" style="display:none" src="https://www.facebook.com/tr?ev=0000000000&amp;cd[value]='.$order->total_products.'&amp;cd[currency]='.Tools::safeOutput($this->context->currency->iso_code).'&amp;noscript=1" />
+								</noscript>';
+
 				$this->js_state = 1;
-				return $this->_runJs($ga_scripts);
+				return $this->_runJs($ga_scripts).$fb_script;
 			}
 		}
 	}
@@ -314,10 +340,20 @@ class Ganalytics extends Module
 
 		if ($controller_name == 'order' || $controller_name == 'orderopc')
 		{
+			$this->js_state = 1;
 			$this->eligible = 1;
 			$step = Tools::getValue('step');
-			if (empty($step))
-				$step = 0;
+			if (empty($step) || $step == 0)
+				$step = -1;
+			$step = $step+2;
+			$ga_scripts .= $this->addProductFromCheckout($products, $step);
+			$ga_scripts .= 'MBG.addCheckout(\''.(int)$step.'\');';
+		}
+		else if ($controller_name == 'authentication' && stripos($_SERVER['REQUEST_URI'], "step%3D1") != false)
+		{
+			$this->js_state = 1;
+			$this->eligible = 1;
+			$step = 2;
 			$ga_scripts .= $this->addProductFromCheckout($products, $step);
 			$ga_scripts .= 'MBG.addCheckout(\''.(int)$step.'\');';
 		}
@@ -331,7 +367,12 @@ class Ganalytics extends Module
 		{
 			$confirmation_hook_id = (int)Hook::getIdByName('orderConfirmation');
 			if (isset(Hook::$executed_hooks[$confirmation_hook_id]))
+			{
 				$this->eligible = 1;
+				$this->js_state = 1;
+				$step = 6;
+				$ga_scripts .= 'MBG.addCheckout(\''.(int)$step.'\');';
+			}
 		}
 
 		if (isset($products) && count($products) && $controller_name != 'index')
@@ -381,7 +422,7 @@ class Ganalytics extends Module
 		if ($this->isModuleEnabled('blockbestsellers') && (!Configuration::get('PS_CATALOG_MODE')
 				|| Configuration::get('PS_BLOCK_BESTSELLERS_DISPLAY')))
 		{
-			$ga_homebestsell_product_list = $this->wrapProducts(ProductSale::getBestSalesLight((int)$this->context->language->id, 0, 8), array(), true);
+			$ga_homebestsell_product_list = $this->wrapProducts(ProductSale::getBestSalesLight((int)$this->context->language->id, 0, 8), array(), true); //replace 8 by the number of products displayed in your bestsellers block
 			$ga_scripts .= $this->addProductImpression($ga_homebestsell_product_list).$this->addProductClick($ga_homebestsell_product_list);
 		}
 
@@ -421,7 +462,8 @@ class Ganalytics extends Module
 
 			if (!isset($product['price']))
 				$product['price'] = (float)Tools::displayPrice(Product::getPriceStatic((int)$product['id_product'], $usetax), $currency);
-			$result_products[] = $this->wrapProduct($product, $extras, $index, $full);
+			$page_nb = $this->context->smarty->getTemplateVars('p');
+			$result_products[] = $this->wrapProduct($product, $extras, $index+1, $full, $page_nb);
 		}
 
 		return $result_products;
@@ -430,7 +472,7 @@ class Ganalytics extends Module
 	/**
 	* wrap product to provide a standard product information for google analytics script
 	*/
-	public function wrapProduct($product, $extras, $index = 0, $full = false)
+	public function wrapProduct($product, $extras, $index = 0, $full = false, $page_nb = 1)
 	{
 		$ga_product = '';
 
@@ -449,9 +491,9 @@ class Ganalytics extends Module
 		if ($full)
 		{
 			$product_id = 0;
-			if (!empty($product['reference']))
+			/*if (!empty($product['reference']))
 				$product_id = $product['reference'];
-			else if (!empty($product['id_product']))
+			else */if (!empty($product['id_product']))
 				$product_id = $product['id_product'];
 			else if (!empty($product['id']))
 				$product_id = $product['id'];
@@ -464,19 +506,20 @@ class Ganalytics extends Module
 
 			$ga_product = array(
 				'id' => $product_id,
-				'name' => $product['name'],
+				'name' => '['.$product['reference'].'] '.$product['name'],
 				'category' => $product['category'],
 				'brand' => isset($product['manufacturer_name']) ? $product['manufacturer_name'] : '',
 				'variant' => $variant,
 				'type' => $product_type,
 				'position' => $index ? $index : '0',
+				'metric1' => $page_nb ? $page_nb : '0',
 				'quantity' => $product_qty,
 				'list' => Tools::getValue('controller'),
 				'url' => isset($product['link']) ? $product['link'] : '',
 				'price' => number_format($product['price'], '2')
 			);
 
-			$ga_product = array_map('urlencode', $ga_product);
+			//$ga_product = array_map('urlencode', $ga_product);
 		}
 
 		return $ga_product;

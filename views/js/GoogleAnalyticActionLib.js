@@ -35,7 +35,7 @@ var GoogleAnalyticEnhancedECommerce = {
 		var Products = {};
 		var Orders = {};
 
-		var ProductFieldObject = ['id', 'name', 'category', 'brand', 'variant', 'price', 'quantity', 'coupon', 'list', 'position', 'dimension1'];
+		var ProductFieldObject = ['id', 'name', 'category', 'brand', 'variant', 'price', 'quantity', 'coupon', 'list', 'position', 'dimension1', 'metric1'];
 		var OrderFieldObject = ['id', 'affiliation', 'revenue', 'tax', 'shipping', 'coupon', 'list', 'step', 'option'];
 
 		if (Product != null) {
@@ -158,11 +158,11 @@ var GoogleAnalyticEnhancedECommerce = {
 		//this.add(Product);
 		ga('ec:setAction', 'purchase', Order);
 		ga('send', 'event','Transaction','purchase', {
-			'hitCallback': function() {
+			'hitCallback': function() {setTimeout(function() {
 				$.get(Order.url, {
 					orderid: Order.id
 				});
-			}
+			}, 3000);}
 		});
 
 	},
@@ -172,6 +172,6 @@ var GoogleAnalyticEnhancedECommerce = {
 			'step': Step
 			//'option':'Visa'
 		});
-		//ga('send', 'pageview');
+		ga('send', 'pageview', {'page': 'order/step'+Step+'.html'});
 	}
 };
